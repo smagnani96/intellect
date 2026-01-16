@@ -52,7 +52,8 @@ class BaseEnhancedMlp(BaseMultilayerPerceptron, BaseModel):
             solver: Literal['lbfgs', 'sgd', 'adam'] = 'adam', alpha: float = 0.0001, batch_size: int | str = 'auto',
             learning_rate_init: float = 0.001, power_t: float = 0.5, max_iter: int = 200,
             loss: str = None, shuffle: bool = True,
-            learning_rate: Literal['constant', 'invscaling', 'adaptive'] = 'constant',
+            learning_rate: Literal['constant',
+                                   'invscaling', 'adaptive'] = 'constant',
             random_state: int | RandomState | None = None, tol: float = 0.0001, verbose: bool = False,
             warm_start: bool = False, momentum: float = 0.9,
             nesterovs_momentum: bool = True, early_stopping: bool = False, validation_fraction: float = 0.1,
@@ -80,12 +81,14 @@ class BaseEnhancedMlp(BaseMultilayerPerceptron, BaseModel):
 
     def _compute_dropout_masks(self, X):
         dropout_masks = None
-        layer_units = [X.shape[1]] + list(self.hidden_layer_sizes) + [self.n_outputs_]
+        layer_units = [X.shape[1]] + \
+            list(self.hidden_layer_sizes) + [self.n_outputs_]
 
         # Create the Dropout Mask (DROPOUT ADDITION)
         if self.dropout not in (0, None):
             if not 0 < self.dropout < 1:
-                raise ValueError('Dropout must be between zero and one. If Dropout=X then, 0 < X < 1.')
+                raise ValueError(
+                    'Dropout must be between zero and one. If Dropout=X then, 0 < X < 1.')
             keep_probability = 1 - self.dropout
             dropout_masks = [np.ones(layer_units[0])]
 
@@ -93,10 +96,12 @@ class BaseEnhancedMlp(BaseMultilayerPerceptron, BaseModel):
             for units in layer_units[1:-1]:
                 # Create inverted Dropout Mask, check for random_state
                 if self.random_state is not None:
-                    layer_mask = self._random_state.random(units) < keep_probability
+                    layer_mask = self._random_state.random(
+                        units) < keep_probability
                     layer_mask = layer_mask.astype(int) / keep_probability
                 else:
-                    layer_mask = (np.random.rand(units) < keep_probability).astype(int) / keep_probability
+                    layer_mask = (np.random.rand(units) < keep_probability).astype(
+                        int) / keep_probability
                 dropout_masks.append(layer_mask)
         return dropout_masks
 
@@ -106,7 +111,8 @@ class BaseEnhancedMlp(BaseMultilayerPerceptron, BaseModel):
         dropout_masks = self._compute_dropout_masks(X)
 
         # Forward propagate
-        activations = self._forward_pass(activations, dropout_masks=dropout_masks)
+        activations = self._forward_pass(
+            activations, dropout_masks=dropout_masks)
 
         # Get loss
         loss_func_name = self.loss
@@ -149,7 +155,8 @@ class BaseEnhancedMlp(BaseMultilayerPerceptron, BaseModel):
             for layer in range(len(coef_grads) - 1):
                 mask = (~(dropout_masks[layer + 1] == 0)).astype(int)
                 coef_grads[layer] = coef_grads[layer] * mask[None, :]
-                coef_grads[layer + 1] = coef_grads[layer + 1] * mask.reshape(-1, 1)
+                coef_grads[layer + 1] = coef_grads[layer + 1] * \
+                    mask.reshape(-1, 1)
                 intercept_grads[layer] = intercept_grads[layer] * mask
         return loss, coef_grads, intercept_grads
 
@@ -163,7 +170,8 @@ class BaseEnhancedMlp(BaseMultilayerPerceptron, BaseModel):
             activations[i + 1] += self.intercepts_[i]
             if (i + 1) != (self.n_layers_ - 1):
                 if dropout_masks is not None:
-                    activations[i + 1] = activations[i + 1] * dropout_masks[i + 1][None, :]
+                    activations[i + 1] = activations[i + 1] * \
+                        dropout_masks[i + 1][None, :]
                 hidden_activation(activations[i + 1])
         output_activation = ACTIVATIONS[self.out_activation_]
         output_activation(activations[i + 1])
@@ -171,7 +179,8 @@ class BaseEnhancedMlp(BaseMultilayerPerceptron, BaseModel):
 
     def _forward_pass_fast(self, X, check_input=True):
         if check_input:
-            X = self._validate_data(X, accept_sparse=['csr', 'csc'], reset=False)
+            X = self._validate_data(
+                X, accept_sparse=['csr', 'csc'], reset=False)
         activation = X
         hidden_activation = ACTIVATIONS[self.activation]
         for i in range(self.n_layers_ - 1):
@@ -249,8 +258,10 @@ class BaseEnhancedMlp(BaseMultilayerPerceptron, BaseModel):
 
         if validation_dataset is not None and validation_dataset != 0:
             if isinstance(validation_dataset, float):
-                validation_dataset = train_dataset.sample(validation_dataset, by_category=True)
-                train_dataset = train_dataset.filter_indexes(validation_dataset.X.index.values)
+                validation_dataset = train_dataset.sample(
+                    validation_dataset, by_category=True)
+                train_dataset = train_dataset.filter_indexes(
+                    validation_dataset.X.index.values)
             else:
                 validation_dataset = validation_dataset.clone()
             history['loss_validation'] = []
@@ -296,7 +307,8 @@ class BaseEnhancedMlp(BaseMultilayerPerceptron, BaseModel):
             if algorithm.value == ContinuouLearningAlgorithm.ground_inferred.value:
                 inferred_labels = inferred_labels.repeat(2)
         else:
-            raise ValueError(f'Unknown learn input {learn_input} {learn_input.value}')
+            raise ValueError(
+                f'Unknown learn input {learn_input} {learn_input.value}')
 
         for _ in range(max_epochs) if not verbose else (pbar := tqdm(range(max_epochs))):
 
@@ -308,7 +320,8 @@ class BaseEnhancedMlp(BaseMultilayerPerceptron, BaseModel):
                 self.learn_knowledge_distillation(
                     inputs, teacher_logits, true_labels, **learn_kwargs)
             else:
-                raise ValueError(f'Unknown algorithm {algorithm} {algorithm.value}')
+                raise ValueError(
+                    f'Unknown algorithm {algorithm} {algorithm.value}')
 
             if self.drift_detector is not None:
                 for vt, vp in zip(labels, self.predict(inputs_client)):
@@ -328,8 +341,10 @@ class BaseEnhancedMlp(BaseMultilayerPerceptron, BaseModel):
                     validation_dataset.y, self.predict_proba(validation_dataset.X))
                 history['loss_validation'].append(eval_metric)
                 if metric:
-                    eval_metric = metric(validation_dataset.y, self.predict(validation_dataset.X))
-                    history[f'{metric.__name__}_validation'].append(eval_metric)
+                    eval_metric = metric(
+                        validation_dataset.y, self.predict(validation_dataset.X))
+                    history[f'{metric.__name__}_validation'].append(
+                        eval_metric)
 
             if monitor_ds:
                 monitored_metrics.append(compute_metric_percategory(
@@ -340,14 +355,16 @@ class BaseEnhancedMlp(BaseMultilayerPerceptron, BaseModel):
                 continue
 
             if verbose:
-                pbar.set_description(str({k: v[-1] for k, v in history.items()}))
+                pbar.set_description(
+                    str({k: v[-1] for k, v in history.items()}))
 
             cond = eval_metric > best_metric if higher_better else eval_metric < best_metric
             current_epochs_wo_improve += 1
             if cond:
                 current_epochs_wo_improve = 0
                 best_metric = eval_metric
-                best_state_dict = {'coefs_': deepcopy(self.coefs_), 'intercepts_': deepcopy(self.intercepts_)}
+                best_state_dict = {'coefs_': deepcopy(
+                    self.coefs_), 'intercepts_': deepcopy(self.intercepts_)}
 
             if current_epochs_wo_improve == epochs_wo_improve:
                 break
@@ -431,7 +448,8 @@ class BaseEnhancedMlp(BaseMultilayerPerceptron, BaseModel):
 
             for _ in range(epochs):
                 if algorithm.value == ContinuouLearningAlgorithm.ground_inferred.value:
-                    self.learn(tmp_inputs, inferred_labels[base: base+batch_size], **learn_kwargs)
+                    self.learn(
+                        tmp_inputs, inferred_labels[base: base+batch_size], **learn_kwargs)
                 elif algorithm.value == ContinuouLearningAlgorithm.ground_truth.value:
                     self.learn(tmp_inputs, tmp_true_labels, **learn_kwargs)
                 elif algorithm.value == ContinuouLearningAlgorithm.knowledge_distillation.value:
@@ -439,7 +457,8 @@ class BaseEnhancedMlp(BaseMultilayerPerceptron, BaseModel):
                         tmp_inputs, teacher_logits[base: base + batch_size],
                         tmp_true_labels, **learn_kwargs)
                 else:
-                    raise ValueError(f'Unknown algorithm {algorithm} {algorithm.value}')
+                    raise ValueError(
+                        f'Unknown algorithm {algorithm} {algorithm.value}')
 
             if self.drift_detector is not None:
                 for j, (vt, vp) in enumerate(zip(tmp_true_labels, self.predict(tmp_inputs_client))):
@@ -507,7 +526,6 @@ class EnhancedMlpClassifier(ClassifierMixin, BaseEnhancedMlp):
     _score = MLPClassifier._score
     _validate_input = MLPClassifier._validate_input
     _predict = MLPClassifier._predict
-    _more_tags = MLPClassifier._more_tags
 
 class EnhancedMlpRegressor(RegressorMixin, BaseEnhancedMlp):
     """Enhanced version of sklearn regressor neural network, with pruning

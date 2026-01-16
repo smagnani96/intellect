@@ -350,7 +350,8 @@ def min_max_multiple(ds_list: list[pd.DataFrame | str]) -> Iterable[Dataset]:
 
 def portions_from_data(data: pd.DataFrame | str, normalize: bool = False,
                        ptype: ProblemType = ProblemType.BINARY, shuffle: bool = True,
-                       benign_labels: list[str] = None, ratios: list[float] = (0.7, 0.1, 0.2)) -> list[Dataset]:
+                       benign_labels: list[str] = None, ratios: list[float] = (0.7, 0.1, 0.2),
+                       label: str = 'Label') -> list[Dataset]:
     """Function to split the given dataframe into the provided portions of specified sizes
     and return them as a Dataset class.
 
@@ -378,24 +379,27 @@ def portions_from_data(data: pd.DataFrame | str, normalize: bool = False,
     if normalize:
         data = next(min_max_multiple([data]))
 
-    label = data.pop('Label')
+    label = data.pop(label)
     data['Type'] = label
 
     if ptype.value == ProblemType.BINARY.value:
         if not benign_labels:
             raise ValueError('Specifiy which labels are benign')
-        label = pd.Series(label.apply(lambda x: x not in benign_labels).astype('int'), index=data.index)
+        label = pd.Series(label.apply(
+            lambda x: x not in benign_labels).astype('int'), index=data.index)
     elif ptype.value == ProblemType.MULTILABEL.value:
         label = pd.Series(pd.factorize(label)[0], index=data.index)
     elif ptype.value == ProblemType.MULTIOUTPUT.value:
-        label = pd.DataFrame(LabelBinarizer().fit_transform(label), index=data.index)
+        label = pd.DataFrame(
+            LabelBinarizer().fit_transform(label), index=data.index)
 
     ret = []
     data['Indexes'] = data.index.values
 
     for x in split_per_ratios(data, ratios, label_col='Type'):
         y = label.loc[x.pop('Indexes').values].reset_index(drop=True)
-        ret.append(Dataset(data=x, shuffle=shuffle, label=y, label_type='Type'))
+        ret.append(Dataset(data=x, shuffle=shuffle,
+                   label=y, label_type='Type'))
     return tuple(ret)
 
 
@@ -425,7 +429,7 @@ def remove_non_ascii(text: str) -> str:
     return ' '.join(re.sub(r'[^\x00-\x7F]', '', text).split())
 
 
-def balance_classes(df: pd.DataFrame, benign_labels: list[str]) -> pd.DataFrame:
+def balance_classes(df: pd.DataFrame, benign_labels: list[str], label: str = "Label") -> pd.DataFrame:
     """Function to balance samples among benign and malicious ones.
 
     Args:
@@ -435,10 +439,11 @@ def balance_classes(df: pd.DataFrame, benign_labels: list[str]) -> pd.DataFrame:
     Returns:
         pd.DataFrame: the result of the balancing
     """
-    d_malicious = df['Label'].value_counts()
+    d_malicious = df[label].value_counts()
     d_benign = {x: d_malicious.pop(x) for x in benign_labels}
-    to_take = min(sum(x for _, x in d_benign.items()), sum(x for _, x in d_malicious.items()))
-    g = df.groupby('Label')
+    to_take = min(sum(x for _, x in d_benign.items()),
+                  sum(x for _, x in d_malicious.items()))
+    g = df.groupby(label)
     cats = {}
     for d in (d_benign, d_malicious):
         d_sorted = dict(sorted(d.items(), key=lambda x: x[1]))
@@ -506,7 +511,7 @@ def load_dataframe_low_memory_balanced(files: list[str], label_col: str, benign_
         ret.append(tmp)
     df = pd.concat(ret)
 
-    df = balance_classes(df, benign_labels)
+    df = balance_classes(df, benign_labels, label=label_col)
     ret = []
     for x in files:
         ret.append(load(x, index_col=0, skipinitialspace=True,
@@ -655,9 +660,11 @@ def indexes_for_oracle_learning(data: Dataset, features_available: list[str],
     idx, idx_oracle = [], []
     if features_available is not None and len(features_available):
         if availability.value == FeatureAvailability.oracle.value:
-            idx = data.filter_features(features_available, get_removal_idx=True)
+            idx = data.filter_features(
+                features_available, get_removal_idx=True)
         elif availability.value == FeatureAvailability.none.value:
-            idx = idx_oracle = data.filter_features(features_available, get_removal_idx=True)
+            idx = idx_oracle = data.filter_features(
+                features_available, get_removal_idx=True)
         elif availability.value != FeatureAvailability.bilateral.value:
             raise NotImplementedError('Daje')
     return idx, idx_oracle
