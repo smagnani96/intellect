@@ -138,7 +138,8 @@ class Config:
     def get_dataset(self, seed=42):
         set_seed(seed)
         train, validation, test = portions_from_data(os.path.join(self.output_path, 'dataset.h5'), normalize=True,
-                                                     benign_labels=self.benign_labels, ratios=self.dataset_portions)
+                                                     benign_labels=self.benign_labels, ratios=self.dataset_portions,
+                                                     label=self.label)
         return train, validation, test
 
 
@@ -147,7 +148,8 @@ def datasetter(config: Config, seed, verbose=True):
     # This notebook is used as a reference for the preparation of a dataset.
     # From the given *CSV* files, we perform some processing operation to create the final dataset.
     set_seed(seed)
-    logger = get_logger('datasetter', log_level=logging.INFO if verbose else logging.ERROR)
+    logger = get_logger(
+        'datasetter', log_level=logging.INFO if verbose else logging.ERROR)
 
     # At first, load only the label column for both the two datasets
     df = []
@@ -157,7 +159,8 @@ def datasetter(config: Config, seed, verbose=True):
         set_seed(seed)
         files = recursive_find_file(ds, endswith_condition='.csv')
         tot_files += files
-        tmp = load_dataframes(files, maxlines=config.samples_per_file, only_labels_str=config.label)
+        tmp = load_dataframes(
+            files, maxlines=config.samples_per_file, only_labels_str=config.label)
         name = os.path.basename(os.path.normpath(ds))
         names += [name]
         # Keep track of the original file and index (row in the file) to which each label comes from.
@@ -173,7 +176,8 @@ def datasetter(config: Config, seed, verbose=True):
     logger.info(df[config.label].value_counts())
 
     # Balance between benign and malicious classes.
-    df_balanced = balance_classes(df, [x + f'-{name}' for x in config.benign_labels for name in names])
+    df_balanced = balance_classes(
+        df, [x + f'-{name}' for x in config.benign_labels for name in names], label=config.label)
     logger.info(df_balanced[config.label].value_counts())
 
     # Take a maximum of samples per category
@@ -185,14 +189,14 @@ def datasetter(config: Config, seed, verbose=True):
             to_pick[k] = config.samples_per_category
 
     shrinked = balance_classes(df_balanced.groupby(by=config.label).apply(lambda x: x.sample(
-        n=to_pick[x.name])).droplevel(level=0), [f'{x}-{y}' for y in names for x in config.benign_labels])
+        n=to_pick[x.name])).droplevel(level=0), [f'{x}-{y}' for y in names for x in config.benign_labels], label=config.label)
 
     logger.info(shrinked[config.label].value_counts())
 
     # Remove columns that do not appear in both the two datasets, and remove the additionally specified ones.
     cols = set([y
                 for x in tot_files
-                for y in pd.read_csv(x, index_col=0, skipinitialspace=True, nrows=0).columns.tolist()])
+                for y in pd.read_csv(x, index_col=None, skipinitialspace=True, nrows=0).columns.tolist()])
     for x in config.excluded_columns:
         cols.discard(x)
     cols = list(cols)
@@ -201,8 +205,9 @@ def datasetter(config: Config, seed, verbose=True):
     # Load original samples from the files.
     final = []
     for x in tot_files:
-        tmp = dict.fromkeys((shrinked[shrinked['File'] == x]['Indexes'] + 1).tolist() + [0])
-        tmp_df = pd.read_csv(x, index_col=0, skipinitialspace=True, usecols=cols,
+        tmp = dict.fromkeys(
+            (shrinked[shrinked['File'] == x]['Indexes'] + 1).tolist() + [0])
+        tmp_df = pd.read_csv(x, index_col=None, skipinitialspace=True, usecols=cols,
                              skiprows=lambda x: x not in tmp, nrows=config.samples_per_file)
         final.append(tmp_df)
     final = pd.concat(final, ignore_index=True)
@@ -216,14 +221,17 @@ def datasetter(config: Config, seed, verbose=True):
     cat_columns = [col_name for col_name,
                    dtype in df_numeric.dtypes.items() if dtype == object and col_name not in (config.label, 'Source')]
     if cat_columns:
-        logger.info(f'Converting following categorical to numerical {cat_columns}')
+        logger.info(
+            f'Converting following categorical to numerical {cat_columns}')
         df_numeric[cat_columns] = df_numeric[cat_columns].astype('category')
-        df_numeric[cat_columns] = df_numeric[cat_columns].apply(lambda x: x.cat.codes)
+        df_numeric[cat_columns] = df_numeric[cat_columns].apply(
+            lambda x: x.cat.codes)
         df_numeric[cat_columns] = df_numeric[cat_columns].astype('int')
 
     # Removing rows with missing values (e.g., NaN or Inf).
     logger.info(f'Shape before dropping NaN {df_numeric.shape}')
-    df_wo_nan = df_numeric.replace([np.inf, -np.inf], np.nan).dropna(axis=0, how='any')
+    df_wo_nan = df_numeric.replace(
+        [np.inf, -np.inf], np.nan).dropna(axis=0, how='any')
     logger.info(f'Resulting shape {df_wo_nan.shape}')
 
     logger.info(df_wo_nan[config.label].value_counts())
@@ -231,15 +239,19 @@ def datasetter(config: Config, seed, verbose=True):
     # Removing all the constant features among the selected dataset. These feature might result constant after the balancing of the samples, meaning that few samples with potentially different values for these features have been removed.
     prevs = set(df_wo_nan.columns.values)
     df_wo_const: pd.DataFrame = remove_constant_columns(df_wo_nan)
-    logger.info(f'Remove constant removed the features {prevs - set(df_wo_const.columns.values)}')
+    logger.info(
+        f'Remove constant removed the features {prevs - set(df_wo_const.columns.values)}')
 
     # Remove identical features (cloned columns or same distribution). *Fwd Header Length.1* is an exact copy of *Fwd Header Length*, while the others present the same values of other columns in the dataset, hence only one is kept.
     prevs = set(df_wo_const.columns.values)
-    df_wo_dup = df_wo_const[df_wo_const.describe(include='all').T.drop_duplicates().T.columns]
-    logger.info(f'Identical columns removed {prevs - set(df_wo_dup.columns.values)}')
+    df_wo_dup = df_wo_const[df_wo_const.describe(
+        include='all').T.drop_duplicates().T.columns]
+    logger.info(
+        f'Identical columns removed {prevs - set(df_wo_dup.columns.values)}')
 
     # Format column and label names (remove extra white spaces, UNICODE characters if any, etc.).
-    df_formatted = format_dataframe_columns_values(format_dataframe_columns_names(df_wo_dup), config.label)
+    df_formatted = format_dataframe_columns_values(
+        format_dataframe_columns_names(df_wo_dup), config.label)
     df_formatted.index.name = 'ID'
 
     # Dump the dataset.
@@ -247,7 +259,8 @@ def datasetter(config: Config, seed, verbose=True):
 
 def correlations(config: Config, seed, output_dir: str, verbose=True):
     set_seed(seed)
-    logger = get_logger('correlations', log_level=logging.INFO if verbose else logging.ERROR)
+    logger = get_logger(
+        'correlations', log_level=logging.INFO if verbose else logging.ERROR)
     train, validation, test = config.get_dataset(seed=seed)
     unified = train.join(validation).join(test)
     ret = {}
@@ -255,19 +268,23 @@ def correlations(config: Config, seed, output_dir: str, verbose=True):
         c, d = unified.filter_categories([x]), unified.filter_categories([y])
         out = {}
         for col in c.X.columns.values:
-            _, v1, v2 = distributions_to_probabilities(c.X[col].to_numpy(), d.X[col].to_numpy(), only_common=False)
+            _, v1, v2 = distributions_to_probabilities(
+                c.X[col].to_numpy(), d.X[col].to_numpy(), only_common=False)
             out[col] = jensenshannon(v1, v2)
         ret[(x, y)] = out
         logger.info(f'Finished combination {x} {y}')
-    pd.DataFrame(ret.values(), index=ret.keys()).to_csv(os.path.join(output_dir, 'jensenshannon_perfeature.csv'))
+    pd.DataFrame(ret.values(), index=ret.keys()).to_csv(
+        os.path.join(output_dir, 'jensenshannon_perfeature.csv'))
 
 def train(config: Config, seed, output_dir: str, verbose=True):
     set_seed(seed)
     train, validation, _ = config.get_dataset(seed=seed)
     set_seed(seed)
-    logger = get_logger('train', log_level=logging.INFO if verbose else logging.ERROR)
+    logger = get_logger(
+        'train', log_level=logging.INFO if verbose else logging.ERROR)
     oracle = model.EnhancedMlpRegressor(train.classes, dropout=config.dropout_hidden,
-                                        hidden_layer_sizes=(config.n_hidden_units,)*config.n_hidden_layers,
+                                        hidden_layer_sizes=(
+                                            config.n_hidden_units,)*config.n_hidden_layers,
                                         learning_rate=config.learning_rate, activation=config.activation)
     logger.info('Training the model')
     history, _ = oracle.fit(train, validation_dataset=validation, batch_size=config.batch_size,
@@ -281,18 +298,28 @@ def train(config: Config, seed, output_dir: str, verbose=True):
 def test_baselines(config: Config, seed, output_dir: str, verbose=True):
     set_seed(seed)
     train, validation, test = config.get_dataset(seed=seed)
-    logger = get_logger('test_baselines', log_level=logging.INFO if verbose else logging.ERROR)
-    train_few = train.filter_categories(config.client_categories).balance_categories()
-    validation_few = validation.filter_categories(config.client_categories).balance_categories()
-    test_few = test.filter_categories(config.client_categories).balance_categories()
+    logger = get_logger(
+        'test_baselines', log_level=logging.INFO if verbose else logging.ERROR)
+    train_few = train.filter_categories(
+        config.client_categories).balance_categories()
+    validation_few = validation.filter_categories(
+        config.client_categories).balance_categories()
+    test_few = test.filter_categories(
+        config.client_categories).balance_categories()
 
-    oracle = model.EnhancedMlpRegressor.load(os.path.join(output_dir, 'oracle'))
-    logger.info('Computing metrics against entire datasets with all categories and with only client categories')
+    oracle = model.EnhancedMlpRegressor.load(
+        os.path.join(output_dir, 'oracle'))
+    logger.info(
+        'Computing metrics against entire datasets with all categories and with only client categories')
     x = pd.DataFrame([compute_metric_percategory(train.y, oracle.predict(train.X), train._y),
-                      compute_metric_percategory(validation.y, oracle.predict(validation.X), validation._y),
-                      compute_metric_percategory(test.y, oracle.predict(test.X), test._y),
-                      compute_metric_percategory(train_few.y, oracle.predict(train_few.X), train_few._y),
-                      compute_metric_percategory(validation_few.y, oracle.predict(validation_few.X), validation_few._y),
+                      compute_metric_percategory(
+                          validation.y, oracle.predict(validation.X), validation._y),
+                      compute_metric_percategory(
+                          test.y, oracle.predict(test.X), test._y),
+                      compute_metric_percategory(
+                          train_few.y, oracle.predict(train_few.X), train_few._y),
+                      compute_metric_percategory(validation_few.y, oracle.predict(
+                          validation_few.X), validation_few._y),
                       compute_metric_percategory(test_few.y, oracle.predict(test_few.X), test_few._y)], index=[('AllC', 'Train'),
                                                                                                                ('AllC',
                                                                                                                 'Validation'),
@@ -311,12 +338,16 @@ def train_evaluation(
     train, validation, _ = config.get_dataset(seed=seed)
 
     if ds_only_client_traffic:
-        train = train.filter_categories(config.client_categories).balance_categories()
-        validation = validation.filter_categories(config.client_categories).balance_categories()
+        train = train.filter_categories(
+            config.client_categories).balance_categories()
+        validation = validation.filter_categories(
+            config.client_categories).balance_categories()
 
-    m_path = os.path.join(output_dir, 'evaluation_full' if prune_ratio is None else f'evaluation_pruned_{prune_ratio}')
+    m_path = os.path.join(
+        output_dir, 'evaluation_full' if prune_ratio is None else f'evaluation_pruned_{prune_ratio}')
 
-    new_hidu = int((1-prune_ratio) * config.n_hidden_units) if prune_ratio else config.n_hidden_units
+    new_hidu = int((1-prune_ratio) *
+                   config.n_hidden_units) if prune_ratio else config.n_hidden_units
 
     set_seed(default=seed)
     m = model.EnhancedMlpRegressor(
@@ -335,9 +366,11 @@ def test_evaluation(config: Config, seed, output_dir, prune_ratio=None, ds_only_
     _, _, test = config.get_dataset(seed=seed)
 
     if ds_only_client_traffic:
-        test = test.filter_categories(config.client_categories).balance_categories()
+        test = test.filter_categories(
+            config.client_categories).balance_categories()
 
-    m_path = os.path.join(output_dir, 'evaluation_full' if prune_ratio is None else f'evaluation_pruned_{prune_ratio}')
+    m_path = os.path.join(
+        output_dir, 'evaluation_full' if prune_ratio is None else f'evaluation_pruned_{prune_ratio}')
     set_seed(default=seed)
     m = model.EnhancedMlpRegressor.load(m_path)
     res = []
@@ -351,13 +384,13 @@ def test_evaluation(config: Config, seed, output_dir, prune_ratio=None, ds_only_
         res.append(end-start)
     dump(res, m_path + '.json')
 
-
 def compare_pruning(config: Config, seed, output_dir: str, verbose=True, ds_only_client_traffic=True):
     config.prune_method = pruning.globally_neurons_l1
-    only_pruning(config, seed, output_dir, verbose=verbose, ds_only_client_traffic=ds_only_client_traffic)
+    only_pruning(config, seed, output_dir, verbose=verbose,
+                 ds_only_client_traffic=ds_only_client_traffic)
     config.prune_method = pruning.globally_unstructured_connections_l1
-    only_pruning(config, seed, output_dir, verbose=verbose, ds_only_client_traffic=ds_only_client_traffic)
-
+    only_pruning(config, seed, output_dir, verbose=verbose,
+                 ds_only_client_traffic=ds_only_client_traffic)
 
 def recursive_ss(config: Config, seed, output_dir: str, verbose=True,
                  ds_only_client_traffic=True, fixed_rank=True, remove_zero_first=True):
@@ -365,11 +398,14 @@ def recursive_ss(config: Config, seed, output_dir: str, verbose=True,
     _, validation, _ = config.get_dataset(seed=seed)
 
     if ds_only_client_traffic:
-        validation = validation.filter_categories(config.client_categories).balance_categories()
+        validation = validation.filter_categories(
+            config.client_categories).balance_categories()
 
-    oracle = model.EnhancedMlpRegressor.load(os.path.join(output_dir, 'oracle'))
+    oracle = model.EnhancedMlpRegressor.load(
+        os.path.join(output_dir, 'oracle'))
 
-    logger = get_logger('recursive_ss', log_level=logging.INFO if verbose else logging.ERROR)
+    logger = get_logger(
+        'recursive_ss', log_level=logging.INFO if verbose else logging.ERROR)
 
     t = 'few_c' if ds_only_client_traffic else 'all_c'
     t2 = 'fixed_rank' if fixed_rank else 'iterative_rank'
@@ -381,8 +417,10 @@ def recursive_ss(config: Config, seed, output_dir: str, verbose=True,
         kwargs = {'rank_algorithm': config.rank_method}
 
     set_seed(seed)
-    asd = pd.DataFrame(columns=validation.features, index=pd.Index([], name='#Features'))
-    asd2 = pd.DataFrame(columns=['Global'] + validation.categories, index=pd.Index([], name='#Features'))
+    asd = pd.DataFrame(columns=validation.features,
+                       index=pd.Index([], name='#Features'))
+    asd2 = pd.DataFrame(
+        columns=['Global'] + validation.categories, index=pd.Index([], name='#Features'))
     logger.info('Running sequential backward elimination')
     for metric_score, _, features_scores in sequential_backward_elimination(
             oracle, validation, remove_zero_first=remove_zero_first, **kwargs):
@@ -392,8 +430,10 @@ def recursive_ss(config: Config, seed, output_dir: str, verbose=True,
     if not os.path.isdir(os.path.join(output_dir, 'ranking')):
         create_dir(os.path.join(output_dir, 'ranking'))
 
-    dump(asd, os.path.join(output_dir, 'ranking', f'recursive_ss_{t}_{t2}_{t3}_features.csv'))
-    dump(asd2, os.path.join(output_dir, 'ranking', f'recursive_ss_{t}_{t2}_{t3}_scores.csv'))
+    dump(asd, os.path.join(output_dir, 'ranking',
+         f'recursive_ss_{t}_{t2}_{t3}_features.csv'))
+    dump(asd2, os.path.join(output_dir, 'ranking',
+         f'recursive_ss_{t}_{t2}_{t3}_scores.csv'))
 
 def only_pruning(config: Config, seed, output_dir: str, verbose=True,
                  ds_only_client_traffic: bool = True):
@@ -401,14 +441,18 @@ def only_pruning(config: Config, seed, output_dir: str, verbose=True,
     _, validation, _ = config.get_dataset(seed=seed)
 
     if ds_only_client_traffic:
-        validation = validation.filter_categories(config.client_categories).balance_categories()
+        validation = validation.filter_categories(
+            config.client_categories).balance_categories()
 
-    oracle = model.EnhancedMlpRegressor.load(os.path.join(output_dir, 'oracle'))
+    oracle = model.EnhancedMlpRegressor.load(
+        os.path.join(output_dir, 'oracle'))
 
     traffic_prefix = 'few_c' if ds_only_client_traffic else 'all_c'
-    new_df_comb = pd.DataFrame(columns=['Prune Ratio', 'Global'] + validation.categories)
+    new_df_comb = pd.DataFrame(
+        columns=['Prune Ratio', 'Global'] + validation.categories)
     set_seed(seed)
-    logger = get_logger('only_pruning', log_level=logging.INFO if verbose else logging.ERROR)
+    logger = get_logger(
+        'only_pruning', log_level=logging.INFO if verbose else logging.ERROR)
     logger.info('Running prune search')
     for k, v in TimeoutIterator(
             prune_search(
@@ -432,9 +476,11 @@ def only_stochastic_search(config: Config, seed, output_dir: str, subset_size_ra
     _, validation, _ = config.get_dataset(seed=seed)
 
     if ds_only_client_traffic:
-        validation = validation.filter_categories(config.client_categories).balance_categories()
+        validation = validation.filter_categories(
+            config.client_categories).balance_categories()
 
-    oracle = model.EnhancedMlpRegressor.load(os.path.join(output_dir, 'oracle'))
+    oracle = model.EnhancedMlpRegressor.load(
+        os.path.join(output_dir, 'oracle'))
 
     rank_prefix = 'few_c' if rank_only_client_traffic else 'all_c'
     traffic_prefix = 'few_c' if ds_only_client_traffic else 'all_c'
@@ -442,18 +488,22 @@ def only_stochastic_search(config: Config, seed, output_dir: str, subset_size_ra
     set_seed(seed)
     rank = config.rank_method(oracle, validation)
 
-    logger = get_logger('only_stochastic_search', log_level=logging.INFO if verbose else logging.ERROR)
+    logger = get_logger('only_stochastic_search',
+                        log_level=logging.INFO if verbose else logging.ERROR)
     logger.info('Running prune search')
 
     set_seed(seed)
-    new_df_comb = pd.DataFrame(columns=validation.features, index=pd.Index([], name='ID'))
-    new_df_comb2 = pd.DataFrame(columns=['Global'] + validation.categories, index=pd.Index([], name='ID'))
+    new_df_comb = pd.DataFrame(
+        columns=validation.features, index=pd.Index([], name='ID'))
+    new_df_comb2 = pd.DataFrame(
+        columns=['Global'] + validation.categories, index=pd.Index([], name='ID'))
     for k, v in TimeoutIterator(
             subset_search(
                 oracle.clone(init=False),
                 validation, subset_size_ratio, config.explored_per_ratio, rank=rank),
             time_limit=config.time_limit):
-        new_df_comb.loc[len(new_df_comb)] = {fname: (1 if fname in k else np.nan) for fname in validation.features}
+        new_df_comb.loc[len(new_df_comb)] = {fname: (
+            1 if fname in k else np.nan) for fname in validation.features}
         new_df_comb2.loc[len(new_df_comb2)] = v
     new_df_comb2 = new_df_comb2.sort_values(by='Global', ascending=False)
 
@@ -471,9 +521,11 @@ def stochastic_search_then_pruning(config: Config, seed, output_dir: str, subset
     _, validation, _ = config.get_dataset(seed=seed)
 
     if ds_only_client_traffic:
-        validation = validation.filter_categories(config.client_categories).balance_categories()
+        validation = validation.filter_categories(
+            config.client_categories).balance_categories()
 
-    oracle = model.EnhancedMlpRegressor.load(os.path.join(output_dir, 'oracle'))
+    oracle = model.EnhancedMlpRegressor.load(
+        os.path.join(output_dir, 'oracle'))
 
     rank_prefix = 'few_c' if rank_only_client_traffic else 'all_c'
     traffic_prefix = 'few_c' if ds_only_client_traffic else 'all_c'
@@ -481,7 +533,8 @@ def stochastic_search_then_pruning(config: Config, seed, output_dir: str, subset
     set_seed(seed)
     rank = config.rank_method(oracle, validation)
 
-    logger = get_logger('stochastic_search_then_pruning', log_level=logging.INFO if verbose else logging.ERROR)
+    logger = get_logger('stochastic_search_then_pruning',
+                        log_level=logging.INFO if verbose else logging.ERROR)
     logger.info('Running stochastic search then pruning')
 
     set_seed(seed)
@@ -495,7 +548,8 @@ def stochastic_search_then_pruning(config: Config, seed, output_dir: str, subset
                 config.prune_method, validation, config.prune_ratios, subset_size_ratio,
                 config.explored_per_ratio, rank=rank),
             time_limit=config.time_limit):
-        new_df_comb.loc[len(new_df_comb)] = {fname: (1 if fname in k else np.nan) for fname in validation.features}
+        new_df_comb.loc[len(new_df_comb)] = {fname: (
+            1 if fname in k else np.nan) for fname in validation.features}
         new_df_comb2.loc[len(new_df_comb2)] = {'Prune Ratio': prune_ratio, **v}
     new_df_comb2 = new_df_comb2.sort_values(by='Global', ascending=False)
 
@@ -517,9 +571,11 @@ def pruning_then_stochastic_search(config: Config, seed, output_dir: str, subset
     _, validation, _ = config.get_dataset(seed=seed)
 
     if ds_only_client_traffic:
-        validation = validation.filter_categories(config.client_categories).balance_categories()
+        validation = validation.filter_categories(
+            config.client_categories).balance_categories()
 
-    oracle = model.EnhancedMlpRegressor.load(os.path.join(output_dir, 'oracle'))
+    oracle = model.EnhancedMlpRegressor.load(
+        os.path.join(output_dir, 'oracle'))
 
     rank_prefix = 'few_c' if rank_only_client_traffic else 'all_c'
     traffic_prefix = 'few_c' if ds_only_client_traffic else 'all_c'
@@ -527,11 +583,13 @@ def pruning_then_stochastic_search(config: Config, seed, output_dir: str, subset
     set_seed(seed)
     rank = config.rank_method(oracle, validation)
 
-    logger = get_logger('pruning_then_stochastic_search', log_level=logging.INFO if verbose else logging.ERROR)
+    logger = get_logger('pruning_then_stochastic_search',
+                        log_level=logging.INFO if verbose else logging.ERROR)
     logger.info('Running pruning then stochastic search')
 
     set_seed(seed)
-    new_df_comb = pd.DataFrame(columns=validation.features, index=pd.Index([], name='ID'))
+    new_df_comb = pd.DataFrame(
+        columns=validation.features, index=pd.Index([], name='ID'))
     new_df_comb2 = pd.DataFrame(
         columns=['Prune Ratio', 'Global'] + validation.categories, index=pd.Index([], name='ID'))
     for prune_ratio, k, v in TimeoutIterator(
@@ -540,7 +598,8 @@ def pruning_then_stochastic_search(config: Config, seed, output_dir: str, subset
                 config.prune_method, validation, config.prune_ratios, subset_size_ratio,
                 config.explored_per_ratio, rank=rank),
             time_limit=config.time_limit):
-        new_df_comb.loc[len(new_df_comb)] = {fname: (1 if fname in k else np.nan) for fname in validation.features}
+        new_df_comb.loc[len(new_df_comb)] = {fname: (
+            1 if fname in k else np.nan) for fname in validation.features}
         new_df_comb2.loc[len(new_df_comb2)] = {'Prune Ratio': prune_ratio, **v}
     new_df_comb2 = new_df_comb2.sort_values(by='Global', ascending=False)
 
@@ -575,7 +634,8 @@ def _run_test(config: Config, save_prefix: str,
     if prune_ratio is not None:
         student_net = config.prune_method(student_net, prune_ratio)
 
-    idx, idx_oracle = indexes_for_oracle_learning(retrain_ds, features_available, availability)
+    idx, idx_oracle = indexes_for_oracle_learning(
+        retrain_ds, features_available, availability)
 
     key_oracle = (hash(retrain_ds), hash(str(idx_oracle)))
     key_student = (hash(retrain_ds), hash(str(idx)), hash(prune_ratio))
@@ -605,7 +665,8 @@ def _run_test(config: Config, save_prefix: str,
                                                     if v not in config.client_categories]
     df = pd.DataFrame(columns=cols)
     df.loc['Test Before'] = student_cache[key_student]
-    df.loc['Test After'] = compute_metric_percategory(tmp_test.y, student_net.predict(tmp_test.X), tmp_test._y)
+    df.loc['Test After'] = compute_metric_percategory(
+        tmp_test.y, student_net.predict(tmp_test.X), tmp_test._y)
     df.loc['Oracle Test'] = oracle_cache[key_oracle]
     dump(df, f'{save_prefix}.csv')
 
@@ -619,14 +680,16 @@ def handle_scenario(config: Config, seed, output_dir: str, scenario_name, verbos
     prune_ratio = None
     subset = []
 
-    logger = get_logger('handle_scenario', log_level=logging.INFO if verbose else logging.ERROR)
+    logger = get_logger('handle_scenario',
+                        log_level=logging.INFO if verbose else logging.ERROR)
 
     if scenario_name != 'o_to_o':
         bs = load(os.path.join(
             output_dir,
             'oracle_baselines.csv'),
             index_col=0)
-        mins = (bs.loc[f"('{n_camelized}', 'Validation')"] * (1 - performance_drop)).to_dict()
+        mins = (bs.loc[f"('{n_camelized}', 'Validation')"] *
+                (1 - performance_drop)).to_dict()
 
         if scenario_name == 'o_to_po':
             x = load(
@@ -645,19 +708,20 @@ def handle_scenario(config: Config, seed, output_dir: str, scenario_name, verbos
                 index_col=0)
 
         if scenario_name == 'o_to_ec':
-            x = load(
-                os.path.join(
-                    output_dir,
-                    'ranking',
-                    f'rank_{nn}_traffic_{n}_combo_pruned_models_subsetsize_{subset_size}_{config.prune_method.__name__}_scores.csv')
-                if prune_first else
-                f'rank_{nn}_traffic_{n}_combo_subsetsize_{subset_size}_pruned_models_{config.prune_method.__name__}_scores.csv',
-                index_col=0)
-        accepted: pd.DataFrame = x[x[cols].apply(lambda x: x.between(mins[x.name], 1.)).all(axis=1)]
+            if prune_first:
+                target_name = f'rank_{nn}_traffic_{n}_combo_pruned_models_subsetsize_{subset_size}_{config.prune_method.__name__}_scores.csv'
+            else:
+                target_name = f'rank_{nn}_traffic_{n}_combo_subsetsize_{subset_size}_pruned_models_{config.prune_method.__name__}_scores.csv'
+            x = load(os.path.join(output_dir, 'ranking',
+                     target_name), index_col=0)
+
+        accepted: pd.DataFrame = x[x[cols].apply(
+            lambda x: x.between(mins[x.name], 1.)).all(axis=1)]
         col = x.loc[accepted.index]
 
         if col.empty:
-            logger.info(f'No results within the performance drop {performance_drop}')
+            logger.info(
+                f'No results within the performance drop {performance_drop}')
             return
 
         if scenario_name in ('o_to_po', 'o_to_ec'):
@@ -669,16 +733,14 @@ def handle_scenario(config: Config, seed, output_dir: str, scenario_name, verbos
             idx = col[col == col.max()].index[-1]
 
         if scenario_name in ('o_to_eo', 'o_to_ec'):
-            subset = load(
-                os.path.join(
-                    output_dir,
-                    'ranking',
-                    f'rank_{n}_traffic_{n}_combo_pruned_models_subsetsize_{subset_size}_{config.prune_method.__name__}_features.csv'
-                    if scenario_name == 'o_to_ec' and prune_first else
-                    f'rank_{n}_traffic_{n}_combo_subsetsize_{subset_size}_pruned_models_{config.prune_method.__name__}_features.csv'
-                    if scenario_name == 'o_to_ec' and not prune_first else
-                    f'rank_{n}_traffic_{n}_subsetsize_{subset_size}_features.csv'),
-                index_col=0).loc[idx]
+            if scenario_name == 'o_to_ec' and prune_first:
+                target_name = f'rank_{n}_traffic_{n}_combo_pruned_models_subsetsize_{subset_size}_{config.prune_method.__name__}_features.csv'
+            elif scenario_name == 'o_to_ec' and not prune_first:
+                target_name = f'rank_{n}_traffic_{n}_combo_subsetsize_{subset_size}_pruned_models_{config.prune_method.__name__}_features.csv'
+            else:
+                target_name = f'rank_{n}_traffic_{n}_subsetsize_{subset_size}_features.csv'
+            subset = load(os.path.join(output_dir, 'ranking',
+                          target_name), index_col=0).loc[idx]
             subset = subset[subset.notnull()].index.values.tolist()
 
     dirname = os.path.join(
@@ -695,11 +757,14 @@ def handle_scenario(config: Config, seed, output_dir: str, scenario_name, verbos
 
     if only_client_categories:
         set_seed(seed)
-        train = train.filter_categories(config.client_categories).balance_categories()
-        validation = validation.filter_categories(config.client_categories).balance_categories()
+        train = train.filter_categories(
+            config.client_categories).balance_categories()
+        validation = validation.filter_categories(
+            config.client_categories).balance_categories()
 
     for c in config.scenarios[scenario_name]:
-        name = os.path.join(dirname, '-'.join(f"{k}_{v.name if hasattr(v, 'name') else v}" for k, v in c.items()))
+        name = os.path.join(
+            dirname, '-'.join(f"{k}_{v.name if hasattr(v, 'name') else v}" for k, v in c.items()))
         logger.info(f'Running scenario {name}')
         _run_test(config, name, train, validation, test, features_available=subset,
                   prune_ratio=prune_ratio, seed=seed, verbose=verbose, **c)
@@ -707,11 +772,14 @@ def handle_scenario(config: Config, seed, output_dir: str, scenario_name, verbos
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', help='Path to configuration file', required=True, type=str)
-    parser.add_argument('-s', '--seed', help='Random seed', type=int, default=42)
+    parser.add_argument(
+        '-c', '--config', help='Path to configuration file', required=True, type=str)
+    parser.add_argument('-s', '--seed', help='Random seed',
+                        type=int, default=42)
     parser.add_argument('-p', '--parallel', type=int, default=1,
                         help='Parallel Threads to be used in the underlying libraries')
-    parser.add_argument('-v', '--verbose', help='Set Verbosity', action='store_true')
+    parser.add_argument('-v', '--verbose',
+                        help='Set Verbosity', action='store_true')
     parser.add_argument('-a', '--action', help='Action to perform', required=True,
                         type=str, choices=['dataset', 'correlations', 'train',
                                                'baselines', 'recursive_subset_search',
@@ -722,15 +790,22 @@ def main():
                                                'train_evaluation',
                                                'test_evaluation',
                                                'run_scenario'])
-    parser.add_argument('-f', '--fixed-rank', help='Fixed Rank during ranking', action='store_true')
-    parser.add_argument('-z', '--zero-first', help='Remove first feature with zero importance', action='store_true')
-    parser.add_argument('-l', '--limited-traffic', help='Limit traffic to client data', action='store_true')
-    parser.add_argument('-r', '--subset-ratio', help='Ratio of the subset to test', type=float, default=None)
+    parser.add_argument('-f', '--fixed-rank',
+                        help='Fixed Rank during ranking', action='store_true')
+    parser.add_argument(
+        '-z', '--zero-first', help='Remove first feature with zero importance', action='store_true')
+    parser.add_argument('-l', '--limited-traffic',
+                        help='Limit traffic to client data', action='store_true')
+    parser.add_argument('-r', '--subset-ratio',
+                        help='Ratio of the subset to test', type=float, default=None)
     parser.add_argument('-n', '--scenario-name', help='Name of the scenario to run', type=str,
                         choices=['o_to_o', 'o_to_po', 'o_to_eo', 'o_to_ec'], default=None)
-    parser.add_argument('-d', '--performance-drop', help='Performance Drop', type=float, default=None)
-    parser.add_argument('-pr', '--prune-ratio', help='Prune ratio', type=float, default=None)
-    parser.add_argument('-pf', '--prune-first', help='Prune first then subset', action='store_true')
+    parser.add_argument('-d', '--performance-drop',
+                        help='Performance Drop', type=float, default=None)
+    parser.add_argument('-pr', '--prune-ratio',
+                        help='Prune ratio', type=float, default=None)
+    parser.add_argument('-pf', '--prune-first',
+                        help='Prune first then subset', action='store_true')
 
     args = parser.parse_args()
     config = Config(**load(args.config))
@@ -749,7 +824,8 @@ def main():
 
     threadpoolctl.threadpool_limits(limits=parallel)
 
-    output_dir = os.path.join(os.path.dirname(args.config), config.output_path, f'seed_{seed}_output')
+    output_dir = os.path.join(os.path.dirname(
+        args.config), config.output_path, f'seed_{seed}_output')
 
     if not os.path.isdir(output_dir):
         create_dir(output_dir)
@@ -761,12 +837,14 @@ def main():
     elif action == 'train':
         train(config, seed, output_dir, verbose=verbose)
     elif action == 'compare_pruning':
-        compare_pruning(config, seed, output_dir, verbose=verbose, ds_only_client_traffic=limited)
+        compare_pruning(config, seed, output_dir,
+                        verbose=verbose, ds_only_client_traffic=limited)
     elif action == 'recursive_subset_search':
         recursive_ss(config, seed, output_dir, verbose=verbose,
                      ds_only_client_traffic=limited, fixed_rank=fixed, remove_zero_first=zero)
     elif action == 'only_pruning':
-        only_pruning(config, seed, output_dir, verbose=verbose, ds_only_client_traffic=limited)
+        only_pruning(config, seed, output_dir, verbose=verbose,
+                     ds_only_client_traffic=limited)
     elif action == 'only_stochastic_search':
         only_stochastic_search(config, seed, output_dir, subset,
                                verbose=verbose,

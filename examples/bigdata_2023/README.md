@@ -2,6 +2,4 @@
 
 This folder contains the source code used the publication at BIGDATA 2023.
 
-<!-- markdown-link-check-disable -->
-For the results (csv, pdf, etc.), please refer to [this shared link](https://fbk-my.sharepoint.com/:u:/g/personal/smagnani_fbk_eu/ESSuWFPF1tJNmU6o3x57a_kBh1e_xY-ceguN8DFzQkaEog?e=75eGf3).
-<!-- markdown-link-check-enable -->
+Publication: `S. Magnani, S. Braghin, A. Rawat, R. Doriguzzi-Corin, M. Purcell and D. Siracusa, "Pruning Federated Learning Models for Anomaly Detection in Resource-Constrained Environments," 2023 IEEE International Conference on Big Data (BigData), Sorrento, Italy, 2023, pp. 3274-3283, doi: 10.1109/BigData59044.2023.10386446`
